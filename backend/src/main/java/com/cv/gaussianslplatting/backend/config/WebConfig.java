@@ -14,9 +14,10 @@ public class WebConfig {
             @Override
             public void addCorsMappings(@NotNull CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("http://localhost:5173")
+                        .allowedOrigins("*")           // 允许所有来源
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                        .allowCredentials(true);
+                        .allowedHeaders("*")           // 允许所有请求头
+                        .allowCredentials(false);      // 当允许所有来源时，必须设置为 false
             }
         };
     }
