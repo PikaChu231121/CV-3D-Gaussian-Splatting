@@ -71,7 +71,7 @@ public class MediaController {
     private String executeGaussianRendering(String folderPath) throws Exception {
         try {
             // 构建渲染命令，将子文件夹路径作为输入路径  
-            String command = String.format("python train.py -s %s --iterations 3000", folderPath);
+            String command = String.format("python train.py -s %s --iterations 1000", folderPath);
 
             // 使用 ProcessBuilder 启动进程  
             ProcessBuilder processBuilder = new ProcessBuilder();
