@@ -149,7 +149,7 @@ public class MediaController {
         }
 
         if (process.exitValue() != 0) {
-            throw new RuntimeException("命令执行失败: \n" + output.toString());
+            throw new RuntimeException("命令执行失败: \n" + output);
         }
     }
 
