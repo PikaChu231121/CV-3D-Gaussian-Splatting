@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api")
+@CrossOrigin(origins = "*") // 允许所有来源
+
 public class MediaController {
     @Value("${media.upload.path}")
     private String baseUploadPath;

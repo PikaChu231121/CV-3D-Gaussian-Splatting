@@ -6,3 +6,5 @@ Anaconda3-5.3.0-Linux-x86_64.sh
 colmap-release-3.9.zip
 cuda_11.8.0_520.61.05_linux.run
 cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+/gaussian-splatting
+/.idea
