@@ -1,5 +1,6 @@
 package com.cv.gaussianslplatting.backend.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -19,6 +20,9 @@ import java.util.concurrent.TimeUnit;
 @CrossOrigin(origins = "*") // 允许所有来源
 
 public class MediaController {
+    @Value("${server.url}")  // 添加服务器 URL 配置
+    private String serverUrl;
+
     @Value("${media.upload.path}")
     private String baseUploadPath;
 
@@ -90,10 +94,48 @@ public class MediaController {
                         .body("渲染失败，PLY文件不存在");
             }
 
-            return createFileResponse(plyFile);
+            // 生成并返回 URL
+            String fileUrl = generateFileUrl(workDir.basePath().getFileName().toString(), "result/point_cloud.ply");
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("url", fileUrl));
+
         } catch (Exception e) {
             cleanupFiles(workDir.basePath().toString());
             throw e;
+        }
+    }
+
+    private String generateFileUrl(String workDirName, String relativePath) {
+        return String.format("%s/api/files/%s/%s", serverUrl, workDirName, relativePath);
+    }
+
+    //添加新的文件访问接口
+    @GetMapping("/files/{workDir}/**")
+    public ResponseEntity<?> getFile(@PathVariable String workDir, HttpServletRequest request) {
+        try {
+            // 获取文件相对路径
+            String relativePath = request.getRequestURI()
+                    .split("/files/" + workDir + "/")[1];
+
+            // 构建完整文件路径
+            Path filePath = Paths.get(baseUploadPath, workDir, relativePath);
+            File file = filePath.toFile();
+
+            if (!file.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // 返回文件
+            InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + file.getName())
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .contentLength(file.length())
+                    .body(resource);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("文件访问失败: " + e.getMessage());
         }
     }
 
@@ -144,15 +186,6 @@ public class MediaController {
             String fileName = String.format("input_%04d.jpg", i + 1);
             files[i].transferTo(inputDir.resolve(fileName));
         }
-    }
-
-    private ResponseEntity<?> createFileResponse(File file) throws FileNotFoundException {
-        InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + file.getName())
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .contentLength(file.length())
-                .body(resource);
     }
 
     private void cleanupFiles(String workDir) throws IOException {
