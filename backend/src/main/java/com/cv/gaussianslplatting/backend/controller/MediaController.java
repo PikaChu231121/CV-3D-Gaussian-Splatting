@@ -32,20 +32,37 @@ public class MediaController {
     @Value("${anaconda.path}")
     private String anacondaPath;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaController.class);
+
+    @GetMapping("/health")
+    public ResponseEntity<String> healthCheck() {
+        return ResponseEntity.ok("Service is running");
+    }
+
+
     @PostMapping("/upload-video-and-render")
     public ResponseEntity<?> uploadVideoAndRender(@RequestParam("file") MultipartFile file) {
+        log.info("Received video upload request. File name: {}, size: {}",
+                file.getOriginalFilename(), file.getSize());
+
         try {
             if (file.isEmpty()) {
+                log.warn("Empty file received");
                 return ResponseEntity.badRequest().body("请选择文件进行上传");
             }
 
+            log.info("Creating work directory...");
             WorkDirectory workDir = createWorkDirectory();
+
             // 保存视频文件
+            log.info("Saving video file to: {}", workDir.basePath());
             Path videoPath = workDir.basePath().resolve("input.mp4");
             file.transferTo(videoPath.toFile());
 
+            log.info("Processing video...");
             return processAndReturnResult(workDir, true);
         } catch (Exception e) {
+            log.error("Error processing video upload", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("处理失败: " + e.getMessage());
         }
