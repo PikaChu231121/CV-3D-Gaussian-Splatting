@@ -14,10 +14,10 @@ public class WebConfig {
             @Override
             public void addCorsMappings(@NonNull CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("*")           // 允许所有来源
+                        .allowedOrigins("*")            // Allow all origins
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                        .allowedHeaders("*")           // 允许所有请求头
-                        .allowCredentials(false);      // 当允许所有来源时，必须设置为 false
+                        .allowedHeaders("*")           // Allow all headers
+                        .allowCredentials(false);      // Must be false when allowing all origins
             }
         };
     }

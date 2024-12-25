@@ -17,10 +17,10 @@ import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*") // 允许所有来源
+@CrossOrigin(origins = "*") // Allow all origins
 
 public class MediaController {
-    @Value("${server.url}")  // 添加服务器 URL 配置
+    @Value("${server.url}")  // Server URL
     private String serverUrl;
 
     @Value("${media.upload.path}")
@@ -54,7 +54,7 @@ public class MediaController {
             log.info("Creating work directory...");
             WorkDirectory workDir = createWorkDirectory();
 
-            // 保存视频文件
+            // Save video
             log.info("Saving video file to: {}", workDir.basePath());
             Path videoPath = workDir.basePath().resolve("input.mp4");
             file.transferTo(videoPath.toFile());
@@ -80,7 +80,7 @@ public class MediaController {
             }
 
             WorkDirectory workDir = createWorkDirectory();
-            // 保存图片文件
+            // Save images
             saveImages(files, workDir.inputDir());
 
             return processAndReturnResult(workDir, false);
@@ -93,32 +93,30 @@ public class MediaController {
     private ResponseEntity<?> processAndReturnResult(WorkDirectory workDir, boolean isVideo) throws Exception {
         try {
             if (isVideo) {
-                // 视频转换为图片帧
+                // Convert video to image frames
                 executeCommand(String.format(
                         "ffmpeg -i %s/input.mp4 -vf \"setpts=0.2*PTS\" %s/input/input_%%4d.jpg",
                         workDir.basePath(), workDir.basePath()
                 ), workDir.basePath().toString());
             }
 
-            // 执行渲染流程
+            // Render
             executeGaussianRendering(workDir);
 
-            cleanupFiles(workDir.basePath().toString());
-            // 返回结果
-            File plyFile = workDir.basePath().resolve("result/point_cloud.ply").toFile();
+            // Return result
+            File plyFile = workDir.basePath().resolve("output/point_cloud/iteration_3000/point_cloud.ply").toFile();
             if (!plyFile.exists()) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                         .body("渲染失败，PLY文件不存在");
             }
 
-            // 生成并返回 URL
-            String fileUrl = generateFileUrl(workDir.basePath().getFileName().toString(), "result/point_cloud.ply");
+            // Generate and return URL
+            String fileUrl = generateFileUrl(workDir.basePath().getFileName().toString(), "output/point_cloud/iteration_3000/point_cloud.ply");
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("url", fileUrl));
 
         } catch (Exception e) {
-            cleanupFiles(workDir.basePath().toString());
             throw e;
         }
     }
@@ -127,15 +125,15 @@ public class MediaController {
         return String.format("%s/api/files/%s/%s", serverUrl, workDirName, relativePath);
     }
 
-    //添加新的文件访问接口
+    // File access endpoint
     @GetMapping("/files/{workDir}/**")
     public ResponseEntity<?> getFile(@PathVariable String workDir, HttpServletRequest request) {
         try {
-            // 获取文件相对路径
+            // Get file relative path
             String relativePath = request.getRequestURI()
                     .split("/files/" + workDir + "/")[1];
 
-            // 构建完整文件路径
+            // Build full file path
             Path filePath = Paths.get(baseUploadPath, workDir, relativePath);
             File file = filePath.toFile();
 
@@ -143,7 +141,7 @@ public class MediaController {
                 return ResponseEntity.notFound().build();
             }
 
-            // 返回文件
+            // return the file
             InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + file.getName())
@@ -170,12 +168,12 @@ public class MediaController {
 
         // Train
         executeCommand(condaInitCommand + String.format(
-                "cd %s && python train.py -s %s -m %s/output --iterations 1000",
+                "cd %s && python train.py -s %s -m %s/output --iterations 3000",
                 gaussianSplattingPath, workDir.basePath(), workDir.basePath()
         ), workDir.basePath().toString());
     }
 
-    // 记录类
+    // Record class
     private record WorkDirectory(Path basePath, Path inputDir, Path outputDir, Path colmapDir) {}
 
     private WorkDirectory createWorkDirectory() throws IOException {
@@ -195,7 +193,10 @@ public class MediaController {
 
     private boolean validateImages(MultipartFile[] files) {
         return Arrays.stream(files)
-                .allMatch(file -> file.getContentType() != null && file.getContentType().startsWith("image/"));
+                .allMatch(file -> {
+                    String contentType = file.getContentType();
+                    return contentType != null && contentType.startsWith("image/");
+                });
     }
 
     private void saveImages(MultipartFile[] files, Path inputDir) throws IOException {
@@ -205,90 +206,13 @@ public class MediaController {
         }
     }
 
-    private void cleanupFiles(String workDir) throws IOException {
-        Path workDirPath = Paths.get(workDir);
-
-        // 要保留的文件和目录
-        Set<String> keepFiles = new HashSet<>(Arrays.asList(
-                "input.mp4",  // 原始输入视频
-                "point_cloud.ply",  // 最终输出的PLY文件
-                "input"  // 图片帧
-        ));
-
-        // 递归删除不需要的文件
-        Files.walk(workDirPath)
-                .sorted(Comparator.reverseOrder()) // 确保先处理文件，后处理目录
-                .forEach(path -> {
-                    try {
-                        String relativePath = workDirPath.relativize(path).toString();
-
-                        // 跳过工作目录本身
-                        if (path.equals(workDirPath)) {
-                            return;
-                        }
-
-                        // 检查是否是需要保留的文件或目录
-                        boolean shouldKeep =
-                                // 保留指定文件
-                                keepFiles.contains(path.getFileName().toString()) ||
-                                        // 保留指定目录中的图片帧
-                                        (relativePath.startsWith("input/") && path.getFileName().toString()
-                                                .matches("input_\\d+\\.jpg")) ||
-                                        // 保留最终输出目录
-                                        relativePath.startsWith("output/point_cloud/iteration_1000");
-
-                        if (!shouldKeep) {
-                            Files.deleteIfExists(path);
-                            System.out.println("已删除: " + path);
-                        }
-                    } catch (IOException e) {
-                        System.err.println("删除文件失败: " + path + ", 错误: " + e.getMessage());
-                    }
-                });
-
-        // 创建精简的输出结构
-        Path finalOutputDir = workDirPath.resolve("result");
-        Files.createDirectories(finalOutputDir);
-
-        // 移动PLY文件到最终位置
-        Path sourcePlyPath = workDirPath.resolve("output/point_cloud/iteration_1000/point_cloud.ply");
-        Path targetPlyPath = finalOutputDir.resolve("point_cloud.ply");
-        if (Files.exists(sourcePlyPath)) {
-            Files.move(sourcePlyPath, targetPlyPath, StandardCopyOption.REPLACE_EXISTING);
-        }
-
-        // 删除空目录，但保留必要的目录
-        Files.walk(workDirPath)
-                .sorted(Comparator.reverseOrder())
-                .forEach(path -> {
-                    try {
-                        if (Files.isDirectory(path) &&
-                                !path.equals(workDirPath) &&
-                                !path.getFileName().toString().equals("input") &&
-                                !path.getFileName().toString().equals("result") &&
-                                isDirEmpty(path)) {
-                            Files.delete(path);
-                            System.out.println("已删除空目录: " + path);
-                        }
-                    } catch (IOException e) {
-                        System.err.println("删除目录失败: " + path + ", 错误: " + e.getMessage());
-                    }
-                });
-    }
-
-
-    private boolean isDirEmpty(Path directory) throws IOException {
-        try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(directory)) {
-            return !dirStream.iterator().hasNext();
-        }
-    }
 
 
     private void executeCommand(String command, String workDir) throws Exception {
         ProcessBuilder processBuilder = new ProcessBuilder();
         processBuilder.directory(new File(workDir));
 
-        // 设置环境变量
+        // set the PATH
         Map<String, String> env = processBuilder.environment();
         env.put("PATH", anacondaPath + "/bin:" + env.get("PATH"));
 
@@ -302,7 +226,7 @@ public class MediaController {
 
         Process process = processBuilder.start();
 
-        // 读取并记录输出
+        // Log output
         BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         String line;
         StringBuilder output = new StringBuilder();
@@ -311,7 +235,7 @@ public class MediaController {
             output.append(line).append("\n");
         }
 
-        // 设置超时时间
+        // set timeout
         if (!process.waitFor(30, TimeUnit.MINUTES)) {
             process.destroyForcibly();
             throw new Exception("处理超时");
